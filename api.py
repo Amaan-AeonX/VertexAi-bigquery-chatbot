@@ -33,7 +33,7 @@ class ChatbotService:
     
     async def process_streaming(self, question: str):
         try:
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing question...'})}\n\n"
+            # yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing question...'})}\n\n"
             
             # Check if this is a running time question
             if 'running status' in question.lower() and 'how long' in question.lower():
@@ -55,20 +55,20 @@ class ChatbotService:
                     return
             
             # Regular query processing
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Generating SQL query...'})}\n\n"
+            # yield f"data: {json.dumps({'type': 'status', 'message': 'Generating SQL query...'})}\n\n"
             
             sql_query = self.ai_client.generate_sql_query(question, self.table_schemas)
             
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Executing query...'})}\n\n"
+            # yield f"data: {json.dumps({'type': 'status', 'message': 'Executing query...'})}\n\n"
             
             results_df = self.bq_client.execute_query(sql_query)
             
-            yield f"data: {json.dumps({'type': 'status', 'message': 'Generating explanation...'})}\n\n"
+            # yield f"data: {json.dumps({'type': 'status', 'message': 'Generating explanation...'})}\n\n"
             
             explanation = self.ai_client.explain_results(sql_query, results_df, question)
             
             yield f"data: {json.dumps({'type': 'explanation', 'text': explanation})}\n\n"
-            yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            # yield f"data: {json.dumps({'type': 'complete'})}\n\n"
             
         except Exception as e:
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
