@@ -6,7 +6,7 @@ import asyncio
 import os
 from dotenv import load_dotenv
 from bigquery_client import BigQueryClient
-from simple_ai_client import SimpleAIClient
+from vertex_ai_client import VertexAIClient
 
 load_dotenv()
 os.environ['GOOGLE_CLOUD_PROJECT'] = 'raymond-maini-iiot'
@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
 class ChatbotService:
     def __init__(self):
         self.bq_client = BigQueryClient()
-        self.ai_client = SimpleAIClient()
+        self.ai_client = VertexAIClient()
         self.table_schemas = self._load_schemas()
     
     def _load_schemas(self):

@@ -26,20 +26,23 @@ class VertexAIClient:
                 schema_context += "\n"
         
         prompt = f"""
-        You are a SQL expert. Based on the user's question and the available BigQuery table schemas, generate a SQL query.
+        You are a SQL expert for manufacturing data. Generate a BigQuery SQL query based on the user's question.
         
         {schema_context}
         
         User Question: {user_question}
         
-        Rules:
-        1. Only use tables that exist in the schemas above
-        2. Use proper BigQuery syntax
-        3. Include the full table reference: `project.dataset.table`
-        4. Keep queries simple and efficient
-        5. If the question is unclear, generate a query that shows relevant sample data
+        IMPORTANT RULES:
+        1. Use exact table reference: `raymond-maini-iiot.cnc_dataset.table_name`
+        2. For machine codes (like VMC153, CTC099), use WHERE machine_code = 'CODE'
+        3. Always ORDER BY created_at DESC or timestamp DESC for latest data
+        4. Use LIMIT 10 for safety unless asking for counts
+        5. Common patterns:
+           - Machine status: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_connections` WHERE machine_code = 'XXX'
+           - Machine parameters: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_parameters` WHERE machine_code = 'XXX'
+           - Uptime/downtime: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_uptime_downtime` WHERE machine_code = 'XXX'
         
-        Generate only the SQL query without any explanation:
+        Generate ONLY the SQL query:
         """
         
         # Using Vertex AI's Gemini model
@@ -50,31 +53,35 @@ class VertexAIClient:
         model = GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
         
-        return response.text.strip()
+        return response.text.strip().replace('```sql', '').replace('```', '').strip()
     
     def explain_results(self, query: str, results_df, user_question: str) -> str:
         """Generate human-friendly explanation of query results"""
         
-        # Prepare results summary
-        results_summary = f"Query returned {len(results_df)} rows"
-        if len(results_df) > 0:
-            results_summary += f" with columns: {', '.join(results_df.columns.tolist())}"
-            if len(results_df) <= 10:
-                results_summary += f"\n\nSample data:\n{results_df.to_string()}"
-            else:
-                results_summary += f"\n\nFirst 5 rows:\n{results_df.head().to_string()}"
+        if len(results_df) == 0:
+            return "No data found for your query. The machine code might not exist in our database or there might be no recent data available."
+        
+        # Prepare results summary with actual data
+        results_summary = f"Query returned {len(results_df)} rows with columns: {', '.join(results_df.columns.tolist())}"
+        if len(results_df) <= 5:
+            results_summary += f"\n\nActual data:\n{results_df.to_string()}"
+        else:
+            results_summary += f"\n\nFirst 3 rows:\n{results_df.head(3).to_string()}"
         
         prompt = f"""
-        You are a data analyst explaining query results to a business user in simple terms.
+        Explain manufacturing data results in simple business terms.
         
-        User's original question: {user_question}
+        User asked: {user_question}
         
-        SQL Query executed: {query}
+        Results: {results_summary}
         
-        Results summary: {results_summary}
+        Provide a clear explanation focusing on:
+        1. What specific data was found
+        2. Key values (machine status, parameters, etc.)
+        3. Timestamps when available
+        4. Business meaning of the data
         
-        Provide a clear, easy-to-understand explanation of what the data shows in response to the user's question.
-        Use simple language and avoid technical jargon. Focus on business insights.
+        Keep it concise and practical.
         """
         
         import vertexai
