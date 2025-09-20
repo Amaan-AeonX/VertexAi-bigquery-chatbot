@@ -25,24 +25,29 @@ class VertexAIClient:
                     schema_context += f"    - {field['name']} ({field['type']}): {field['description']}\n"
                 schema_context += "\n"
         
+        # Extract machine code from question
+        import re
+        machine_match = re.search(r'\b([A-Z]{2,}\d{2,})\b', user_question)
+        machine_code = machine_match.group(1) if machine_match else 'CTC074'
+        
+        # For time-based queries, start with broader search
+        if 'last 24 hours' in user_question.lower() or 'running status' in user_question.lower():
+            return f"SELECT machine_code, machine_status, created_at FROM `raymond-maini-iiot.cnc_dataset.machine_connections` WHERE machine_code = '{machine_code}' ORDER BY created_at DESC LIMIT 50"
+        
         prompt = f"""
-        You are a SQL expert for manufacturing data. Generate a BigQuery SQL query based on the user's question.
+        Generate a BASIC BigQuery SELECT query.
         
         {schema_context}
         
-        User Question: {user_question}
+        Question: {user_question}
         
-        IMPORTANT RULES:
-        1. Use exact table reference: `raymond-maini-iiot.cnc_dataset.table_name`
-        2. For machine codes (like VMC153, CTC099), use WHERE machine_code = 'CODE'
-        3. Always ORDER BY created_at DESC or timestamp DESC for latest data
-        4. Use LIMIT 10 for safety unless asking for counts
-        5. Common patterns:
-           - Machine status: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_connections` WHERE machine_code = 'XXX'
-           - Machine parameters: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_parameters` WHERE machine_code = 'XXX'
-           - Uptime/downtime: SELECT * FROM `raymond-maini-iiot.cnc_dataset.machine_uptime_downtime` WHERE machine_code = 'XXX'
+        RULES:
+        1. Use tables from: `raymond-maini-iiot.cnc_dataset.*` or `raymond-maini-iiot.dev_public.*`
+        2. For machine codes, use: WHERE machine_code = 'CODE'
+        3. Always ORDER BY created_at DESC LIMIT 20
+        4. Only use: SELECT, FROM, WHERE, ORDER BY, LIMIT
         
-        Generate ONLY the SQL query:
+        Generate ONLY basic SELECT query:
         """
         
         # Using Vertex AI's Gemini model
@@ -53,13 +58,14 @@ class VertexAIClient:
         model = GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(prompt)
         
-        return response.text.strip().replace('```sql', '').replace('```', '').strip()
+        sql = response.text.strip().replace('```sql', '').replace('```', '').strip()
+        return sql
     
     def explain_results(self, query: str, results_df, user_question: str) -> str:
         """Generate human-friendly explanation of query results"""
         
         if len(results_df) == 0:
-            return "No data found for your query. The machine code might not exist in our database or there might be no recent data available."
+            return "No data found for your query. The machine code might not exist in our database, there might be no data in the specified time period, or the machine might not have had any status changes recently."
         
         # Prepare results summary with actual data
         results_summary = f"Query returned {len(results_df)} rows with columns: {', '.join(results_df.columns.tolist())}"
@@ -67,6 +73,14 @@ class VertexAIClient:
             results_summary += f"\n\nActual data:\n{results_df.to_string()}"
         else:
             results_summary += f"\n\nFirst 3 rows:\n{results_df.head(3).to_string()}"
+        
+        # Special handling for running time questions
+        if 'running status' in user_question.lower() and 'how long' in user_question.lower():
+            running_records = results_df[results_df['machine_status'].str.contains('Running', case=False, na=False)] if 'machine_status' in results_df.columns else pd.DataFrame()
+            if not running_records.empty:
+                total_running_records = len(running_records)
+                latest_status = results_df.iloc[0]['machine_status'] if len(results_df) > 0 else 'Unknown'
+                return f"Found {total_running_records} records where machine was in Running status out of {len(results_df)} total status records. Current status: {latest_status}. Note: Exact duration calculation requires analyzing status change intervals."
         
         prompt = f"""
         Explain manufacturing data results in simple business terms.
@@ -86,6 +100,7 @@ class VertexAIClient:
         
         import vertexai
         from vertexai.generative_models import GenerativeModel
+        import pandas as pd
         
         vertexai.init(project=self.project_id, location=self.location)
         model = GenerativeModel("gemini-1.5-flash")

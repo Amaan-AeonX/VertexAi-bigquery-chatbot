@@ -33,6 +33,28 @@ class ChatbotService:
     
     async def process_streaming(self, question: str):
         try:
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Analyzing question...'})}\n\n"
+            
+            # Check if this is a running time question
+            if 'running status' in question.lower() and 'how long' in question.lower():
+                import re
+                machine_match = re.search(r'\b([A-Z]{2,}\d{2,})\b', question)
+                if machine_match:
+                    machine_code = machine_match.group(1)
+                    yield f"data: {json.dumps({'type': 'status', 'message': f'Calculating running time for {machine_code}...'})}\n\n"
+                    
+                    running_time = self.bq_client.calculate_running_time(machine_code, 24)
+                    
+                    if running_time['running_hours'] > 0:
+                        explanation = f"Machine {machine_code} was running for {running_time['running_hours']} hours ({running_time['running_minutes']} minutes) in the last 24 hours."
+                    else:
+                        explanation = f"Machine {machine_code} was not in running status in the last 24 hours, or no status change data is available."
+                    
+                    yield f"data: {json.dumps({'type': 'explanation', 'text': explanation})}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                    return
+            
+            # Regular query processing
             yield f"data: {json.dumps({'type': 'status', 'message': 'Generating SQL query...'})}\n\n"
             
             sql_query = self.ai_client.generate_sql_query(question, self.table_schemas)
