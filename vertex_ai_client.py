@@ -2,6 +2,9 @@ import os
 from google.cloud import aiplatform
 from typing import Dict, List
 import json
+import vertexai
+from vertexai.generative_models import GenerativeModel
+import pandas as pd
 
 GOOGLE_CLOUD_PROJECT="raymond-maini-iiot"
 VERTEX_AI_LOCATION="asia-south1"
@@ -25,29 +28,33 @@ class VertexAIClient:
                     schema_context += f"    - {field['name']} ({field['type']}): {field['description']}\n"
                 schema_context += "\n"
         
-        # Extract machine code from question
-        import re
-        machine_match = re.search(r'\b([A-Z]{2,}\d{2,})\b', user_question)
-        machine_code = machine_match.group(1) if machine_match else 'CTC074'
-        
-        # For time-based queries, start with broader search
-        if 'last 24 hours' in user_question.lower() or 'running status' in user_question.lower():
-            return f"SELECT machine_code, machine_status, created_at FROM `raymond-maini-iiot.cnc_dataset.machine_connections` WHERE machine_code = '{machine_code}' ORDER BY created_at DESC LIMIT 50"
-        
         prompt = f"""
-        Generate a BASIC BigQuery SELECT query.
+        Generate a BigQuery SQL query based on the user's question and available table schemas.
         
         {schema_context}
         
         Question: {user_question}
         
         RULES:
-        1. Use tables from: `raymond-maini-iiot.cnc_dataset.*` or `raymond-maini-iiot.dev_public.*`
-        2. For machine codes, use: WHERE machine_code = 'CODE'
-        3. Always ORDER BY created_at DESC LIMIT 20
-        4. Only use: SELECT, FROM, WHERE, ORDER BY, LIMIT
+        1. Use full table references: `raymond-maini-iiot.dataset.table`
+        2. Extract machine codes from question (format: 2+ letters + 2+ digits like CTC074, VMC153)
+        3. For time queries use TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL X HOUR/DAY)
+        4. Always include ORDER BY with timestamp columns DESC
+        5. Use appropriate LIMIT:
+           - If user says "all" or "show all": use LIMIT 100 or no LIMIT
+           - Otherwise: use LIMIT 10-20
+        6. Match user intent to correct tables:
+           - "machine types" or "types of machines" → dev_public.machine_type
+           - "machine details" or "machine info" → dev_public.machine_details
+           - "machine status" or "status" → cnc_dataset.machine_connections
+           - "machine parameters" or "feed rate" or "spindle speed" → cnc_dataset.machine_parameters
+           - "uptime" or "downtime" → cnc_dataset.machine_uptime_downtime
+        7. For useful columns:
+           - machine_type: name, description
+           - machine_details: machine_code, machine_name, machine_status, line_name, location_name
+        8. NEVER include id, uuid, or similar identifier columns in SELECT
         
-        Generate ONLY basic SELECT query:
+        Generate ONLY the SQL query:
         """
         
         # Using Vertex AI's Gemini model
@@ -64,43 +71,29 @@ class VertexAIClient:
     def explain_results(self, query: str, results_df, user_question: str) -> str:
         """Generate human-friendly explanation of query results"""
         
-        if len(results_df) == 0:
-            return "No data found for your query. The machine code might not exist in our database, there might be no data in the specified time period, or the machine might not have had any status changes recently."
-        
         # Prepare results summary with actual data
-        results_summary = f"Query returned {len(results_df)} rows with columns: {', '.join(results_df.columns.tolist())}"
-        if len(results_df) <= 5:
-            results_summary += f"\n\nActual data:\n{results_df.to_string()}"
+        if len(results_df) == 0:
+            results_summary = "Query returned 0 rows - no data found"
         else:
-            results_summary += f"\n\nFirst 3 rows:\n{results_df.head(3).to_string()}"
-        
-        # Special handling for running time questions
-        if 'running status' in user_question.lower() and 'how long' in user_question.lower():
-            running_records = results_df[results_df['machine_status'].str.contains('Running', case=False, na=False)] if 'machine_status' in results_df.columns else pd.DataFrame()
-            if not running_records.empty:
-                total_running_records = len(running_records)
-                latest_status = results_df.iloc[0]['machine_status'] if len(results_df) > 0 else 'Unknown'
-                return f"Found {total_running_records} records where machine was in Running status out of {len(results_df)} total status records. Current status: {latest_status}. Note: Exact duration calculation requires analyzing status change intervals."
+            results_summary = f"Query returned {len(results_df)} rows with columns: {', '.join(results_df.columns.tolist())}"
+            # Show all data if user asked for "all" or if small dataset
+            if 'all' in user_question.lower() or len(results_df) <= 10:
+                results_summary += f"\n\nAll data:\n{results_df.to_string()}"
+            else:
+                results_summary += f"\n\nFirst 5 rows:\n{results_df.head(5).to_string()}"
         
         prompt = f"""
-        Explain manufacturing data results in simple business terms.
+        Give a one-line explanation followed by the data.
         
         User asked: {user_question}
-        
         Results: {results_summary}
         
-        Provide a clear explanation focusing on:
-        1. What specific data was found
-        2. Key values (machine status, parameters, etc.)
-        3. Timestamps when available
-        4. Business meaning of the data
-        
-        Keep it concise and practical.
+        Format:
+        - Start with ONE short sentence explaining what was found
+        - Then present the data clearly
+        - If no data: brief explanation why
+        - Keep explanation to maximum 10 words
         """
-        
-        import vertexai
-        from vertexai.generative_models import GenerativeModel
-        import pandas as pd
         
         vertexai.init(project=self.project_id, location=self.location)
         model = GenerativeModel("gemini-1.5-flash")

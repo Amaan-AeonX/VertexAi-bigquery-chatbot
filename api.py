@@ -33,29 +33,15 @@ class ChatbotService:
     
     async def process_streaming(self, question: str):
         try:
-            if 'running status' in question.lower() and 'how long' in question.lower():
-                import re
-                machine_match = re.search(r'\b([A-Z]{2,}\d{2,})\b', question)
-                if machine_match:
-                    machine_code = machine_match.group(1)
-                    running_time = self.bq_client.calculate_running_time(machine_code, 24)
-                    
-                    if running_time['running_hours'] > 0:
-                        explanation = (
-                            f"Machine {machine_code} was running for "
-                            f"{running_time['running_hours']} hours "
-                            f"({running_time['running_minutes']} minutes) in the last 24 hours."
-                        )
-                    else:
-                        explanation = (
-                            f"Machine {machine_code} was not in running status in the last 24 hours, "
-                            f"or no status change data is available."
-                        )
-
-                    yield json.dumps({'answer': explanation}) + "\n"
-                    return
-
-            # Regular query
+            # Handle pure greetings only (not mixed with questions)
+            question_lower = question.lower().strip()
+            pure_greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
+            if question_lower in pure_greetings:
+                explanation = "Hello! I'm your manufacturing data assistant. I can help you with machine status, parameters, uptime, and other manufacturing data queries. What would you like to know?"
+                yield json.dumps({'answer': explanation}) + "\n"
+                return
+            
+            # All queries processed dynamically
             sql_query = self.ai_client.generate_sql_query(question, self.table_schemas)
             results_df = self.bq_client.execute_query(sql_query)
             explanation = self.ai_client.explain_results(sql_query, results_df, question)
