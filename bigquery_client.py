@@ -1,6 +1,5 @@
-import os
 from google.cloud import bigquery
-from typing import List, Dict, Any
+from typing import List, Dict
 import pandas as pd
 
 GOOGLE_CLOUD_PROJECT="raymond-maini-iiot"

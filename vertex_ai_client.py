@@ -1,7 +1,5 @@
-import os
 from google.cloud import aiplatform
-from typing import Dict, List
-import json
+from typing import Dict
 import vertexai
 from vertexai.generative_models import GenerativeModel
 import pandas as pd
@@ -53,6 +51,8 @@ class VertexAIClient:
            - machine_type: name, description
            - machine_details: machine_code, machine_name, machine_status, line_name, location_name
         8. NEVER include id, uuid, or similar identifier columns in SELECT
+        9. ALWAYS add WHERE conditions to exclude NULL values for main columns
+        10. For counting running machines: use COUNT(DISTINCT machine_code) to count unique machines only
         
         Generate ONLY the SQL query:
         """

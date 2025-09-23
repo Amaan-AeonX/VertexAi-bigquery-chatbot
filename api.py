@@ -2,7 +2,6 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 import json
-import asyncio
 import os
 from dotenv import load_dotenv
 from bigquery_client import BigQueryClient
@@ -35,9 +34,9 @@ class ChatbotService:
         try:
             # Handle pure greetings only (not mixed with questions)
             question_lower = question.lower().strip()
-            pure_greetings = ['hello', 'hi', 'hey', 'good morning', 'good afternoon', 'good evening']
+            pure_greetings = ['hello', 'hi', 'hii', 'hey', 'good morning', 'good afternoon', 'good evening']
             if question_lower in pure_greetings:
-                explanation = "Hello! I'm your manufacturing data assistant. I can help you with machine status, parameters, uptime, and other manufacturing data queries. What would you like to know?"
+                explanation = "Hello! I'm your Manufex AI Data Assistant. I can help you with machine status, parameters, uptime, and other manufacturing data queries. What would you like to know?"
                 yield json.dumps({'answer': explanation}) + "\n"
                 return
             
