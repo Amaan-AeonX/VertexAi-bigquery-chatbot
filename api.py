@@ -42,6 +42,7 @@ class ChatbotService:
             
             # All queries processed dynamically
             sql_query = self.ai_client.generate_sql_query(question, self.table_schemas)
+            print(f"Generated SQL: {sql_query}")
             results_df = self.bq_client.execute_query(sql_query)
             explanation = self.ai_client.explain_results(sql_query, results_df, question)
 

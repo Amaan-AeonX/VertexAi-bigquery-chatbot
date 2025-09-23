@@ -44,7 +44,7 @@ class VertexAIClient:
         6. Match user intent to correct tables:
            - "machine types" or "types of machines" → dev_public.machine_type
            - "machine details" or "machine info" → dev_public.machine_details
-           - "machine status" or "status" → cnc_dataset.machine_connections
+           - "machine status" or "status" → cnc_dataset.machine_parameters
            - "machine parameters" or "feed rate" or "spindle speed" → cnc_dataset.machine_parameters
            - "uptime" or "downtime" → cnc_dataset.machine_uptime_downtime
         7. For useful columns:
@@ -53,6 +53,9 @@ class VertexAIClient:
         8. NEVER include id, uuid, or similar identifier columns in SELECT
         9. ALWAYS add WHERE conditions to exclude NULL values for main columns
         10. For counting running machines: use COUNT(DISTINCT machine_code) to count unique machines only
+        11. For "current" or "currently running/idle" machines: use timestamp filter within last 2 minutes:
+            - Running: WHERE machine_status = 'Running' AND timestamp BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 MINUTE) AND CURRENT_TIMESTAMP()
+            - Idle: WHERE machine_status = 'Idle' AND timestamp BETWEEN TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 2 MINUTE) AND CURRENT_TIMESTAMP()
         
         Generate ONLY the SQL query:
         """
